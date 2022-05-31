@@ -80,6 +80,10 @@
                         {% endif %}
                     </label>
                     <input type="text" name="host" id="host" class="val" autocapitalize="off" autocorrect="off" value="{{ host  or "" }}" onfocus="this.select()"/><br>
+                    <label for="exclude_tags">
+                        Tags to exclude from test <span style="color:#8a8a8a;">(e.g. task_1,task_2,task_5)</span>
+                    </label>
+                    <input type="text" name="exclude_tags" id="exclude_tags" class="val" autocapitalize="off" autocorrect="off" value="{{ exclude_tags  or "" }}" onfocus="this.select()"/><br>
                     {% if extra_options %}<label>Custom parameters:</label>{% endif %}
                     {% for key, value in extra_options.items() %}
                         {% if not ((value is none) or (value is boolean)) %}

@@ -151,6 +151,9 @@ class WebUI:
                 elif key == "host":
                     # Replace < > to guard against XSS
                     environment.host = str(request.form["host"]).replace("<", "").replace(">", "")
+                elif key == "exclude_tags":
+                    # Replace < > to guard against XSS
+                    environment.exclude_tags = str(request.form["exclude_tags"]).split(",")
                 elif key in parsed_options_dict:
                     # update the value in environment.parsed_options, but dont change the type.
                     # This won't work for parameters that are None
@@ -468,6 +471,7 @@ class WebUI:
             "user_count": self.environment.runner.user_count,
             "version": version,
             "host": host,
+            "exclude_tags": ','.join(self.environment.exclude_tags or []),
             "history": stats.history if stats.num_requests > 0 else {},
             "override_host_warning": override_host_warning,
             "num_users": options and options.num_users,
