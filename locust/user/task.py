@@ -210,6 +210,35 @@ def filter_tasks_by_tags(
     task_holder.tasks = new_tasks
 
 
+def get_all_tags(
+    task_holder: Type[TaskHolder],
+    checked: Optional[Dict[TaskT, bool]] = None,
+    tags: set = None
+):
+    if tags is None:
+        tags = set()
+
+    tmp_tags = set()
+    if checked is None:
+        checked = {}
+
+    for t in task_holder.tasks:
+        if t in checked:
+            checked[t] = True
+            continue
+
+        if hasattr(t, "tasks"):
+            get_all_tags(t, checked, tags)
+        else:
+            if "locust_tag_set" in dir(t):
+                tmp_tags.update(t.locust_tag_set)
+
+        checked[t] = True
+
+    tags.update(tmp_tags)
+    return tags
+
+
 class TaskSetMeta(type):
     """
     Meta class for the main User class. It's used to allow User classes to specify task execution

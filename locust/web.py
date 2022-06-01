@@ -21,6 +21,7 @@ from .stats import StatsCSVFileWriter, StatsErrorDict, sort_stats
 from . import stats as stats_module, __version__ as version, argument_parser
 from .stats import StatsCSV
 from .user.inspectuser import get_ratio
+from .user.task import get_all_tags
 from .util.cache import memoize
 from .util.rounding import proper_round
 from .html import get_html_report
@@ -394,6 +395,12 @@ class WebUI:
                 "total": get_ratio(self.environment.user_classes, user_spawned, True),
             }
             return task_data
+
+        @app.route("/tags")
+        @self.auth_required_if_enabled
+        def tags() -> Dict[str, List[str]]:
+            tags_per_user_class = {user_class.__name__: list(get_all_tags(user_class)) for user_class in self.environment.user_classes}
+            return tags_per_user_class
 
     def start(self):
         self.greenlet = gevent.spawn(self.start_server)
