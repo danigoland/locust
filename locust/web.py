@@ -478,6 +478,7 @@ class WebUI:
             "user_count": self.environment.runner.user_count,
             "version": version,
             "host": host,
+            "all_tags": list(chain([list(get_all_tags(user_class)) for user_class in self.environment.user_classes])),
             "exclude_tags": ','.join(self.environment.exclude_tags or []),
             "history": stats.history if stats.num_requests > 0 else {},
             "override_host_warning": override_host_warning,

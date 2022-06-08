@@ -80,6 +80,15 @@
                         {% endif %}
                     </label>
                     <input type="text" name="host" id="host" class="val" autocapitalize="off" autocorrect="off" value="{{ host  or "" }}" onfocus="this.select()"/><br>
+                  <label for="all_tags">
+                        <ul>
+                        {% for tag in all_tags %}
+                            <li>{{tag}}</li>
+                    {% endfor %}
+                    </ul>
+                  </label>
+
+
                     <label for="exclude_tags">
                         Tags to exclude from test <span style="color:#8a8a8a;">(e.g. task_1,task_2,task_5)</span>
                     </label>
