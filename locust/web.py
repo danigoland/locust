@@ -248,7 +248,7 @@ class WebUI:
                     as_attachment=True,
                     download_name=_download_csv_suggest_file_name("requests_full_history"),
                     etag=True,
-                    cache_timeout=None,
+                    max_age=0,
                     conditional=True,
                     last_modified=None,
                 )
@@ -359,8 +359,8 @@ class WebUI:
                     "exceptions": [
                         {
                             "count": row["count"],
-                            "msg": row["msg"],
-                            "traceback": row["traceback"],
+                            "msg": escape(row["msg"]),
+                            "traceback": escape(row["traceback"]),
                             "nodes": ", ".join(row["nodes"]),
                         }
                         for row in (environment.runner.exceptions.values() if environment.runner is not None else [])

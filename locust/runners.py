@@ -46,7 +46,7 @@ from gevent.pool import Group
 from . import User
 from locust import __version__
 from .dispatch import UsersDispatcher
-from .exception import RPCError
+from .exception import RPCError, RPCReceiveError, RPCSendError
 from .log import greenlet_exception_logger
 from .rpc import (
     Message,
@@ -82,7 +82,7 @@ HEARTBEAT_LIVENESS = 3
 HEARTBEAT_DEAD_INTERNAL = -60
 FALLBACK_INTERVAL = 5
 CONNECT_TIMEOUT = 5
-CONNECT_RETRY_COUNT = 2
+CONNECT_RETRY_COUNT = 60
 
 
 greenlet_exception_handler = greenlet_exception_logger(logger)
@@ -406,6 +406,8 @@ class Runner:
             self.shape_last_state = None
 
         self.stop_users(self.user_classes_count)
+
+        self._users_dispatcher = None
 
         self.update_state(STATE_STOPPED)
 
@@ -946,9 +948,9 @@ class MasterRunner(DistributedRunner):
                     self.start(user_count=self.target_user_count, spawn_rate=self.spawn_rate)
 
     def reset_connection(self) -> None:
-        logger.info("Reset connection to worker")
+        logger.info("Resetting RPC server and all client connections.")
         try:
-            self.server.close()
+            self.server.close(linger=0)
             self.server = rpc.Server(self.master_bind_host, self.master_bind_port)
             self.connection_broken = False
         except RPCError as e:
@@ -958,12 +960,26 @@ class MasterRunner(DistributedRunner):
         while True:
             try:
                 client_id, msg = self.server.recv_from_client()
+            except RPCReceiveError as e:
+                logger.error(f"RPCError when receiving from client: {e}. Will reset client {client_id}.")
+                try:
+                    self.server.send_to_client(Message("reconnect", None, client_id))
+                except Exception as e:
+                    logger.error(f"Error sending reconnect message to client: {e}. Will reset RPC server.")
+                    self.connection_broken = True
+                    gevent.sleep(FALLBACK_INTERVAL)
+                    continue
+            except RPCSendError as e:
+                logger.error(f"Error sending reconnect message to client: {e}. Will reset RPC server.")
+                self.connection_broken = True
+                gevent.sleep(FALLBACK_INTERVAL)
+                continue
             except RPCError as e:
-                if self.clients.ready:
-                    logger.error(f"RPCError found when receiving from client: {e}")
+                if self.clients.ready or self.clients.spawning or self.clients.running:
+                    logger.error(f"RPCError: {e}. Will reset RPC server.")
                 else:
                     logger.debug(
-                        "RPCError found when receiving from client: %s (but no clients were expected to be connected anyway)"
+                        "RPCError when receiving from client: %s (but no clients were expected to be connected anyway)"
                         % (e)
                     )
                 self.connection_broken = True
@@ -1285,6 +1301,9 @@ class WorkerRunner(DistributedRunner):
                 self.stop()
                 self._send_stats()  # send a final report, in case there were any samples not yet reported
                 self.greenlet.kill(block=True)
+            elif msg.type == "reconnect":
+                logger.warning("Received reconnect message from master. Resetting RPC connection.")
+                self.reset_connection()
             elif msg.type in self.custom_messages:
                 logger.debug(f"Received {msg.type} message from master")
                 self.custom_messages[msg.type](environment=self.environment, msg=msg)
@@ -1319,6 +1338,14 @@ class WorkerRunner(DistributedRunner):
         self.client.send(Message("client_ready", __version__, self.client_id))
         success = self.connection_event.wait(timeout=CONNECT_TIMEOUT)
         if not success:
+            if self.retry < 3:
+                logger.debug(
+                    f"Failed to connect to master {self.master_host}:{self.master_port}, retry {self.retry}/{CONNECT_RETRY_COUNT}."
+                )
+            else:
+                logger.warning(
+                    f"Failed to connect to master {self.master_host}:{self.master_port}, retry {self.retry}/{CONNECT_RETRY_COUNT}."
+                )
             if self.retry > CONNECT_RETRY_COUNT:
                 raise ConnectionError()
             self.connect_to_master()
