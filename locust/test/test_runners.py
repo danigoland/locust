@@ -21,7 +21,10 @@ from locust import (
 )
 from locust.argument_parser import parse_options
 from locust.env import Environment
-from locust.exception import RPCError, StopUser, RPCReceiveError
+from locust.exception import (
+    RPCError,
+    StopUser,
+)
 from locust.main import create_environment
 from locust.rpc import Message
 from locust.runners import (
@@ -46,7 +49,6 @@ from retry import retry  # type: ignore
 from .util import patch_env
 
 NETWORK_BROKEN = "network broken"
-BAD_MESSAGE = "bad message"
 
 
 def mocked_rpc(raise_on_close=True):
@@ -81,11 +83,9 @@ def mocked_rpc(raise_on_close=True):
             msg = Message.unserialize(results)
             if msg.data == NETWORK_BROKEN:
                 raise RPCError()
-            if msg.data == BAD_MESSAGE:
-                raise RPCReceiveError("Bad message")
             return msg.node_id, msg
 
-        def close(self, linger=None):
+        def close(self):
             if self.raise_error_on_close:
                 raise RPCError()
             else:
@@ -767,61 +767,6 @@ class TestLocustRunner(LocustRunnerTestCase):
         runner.stop()
         sleep(1)
         self.assertEqual(0, runner.user_count)
-
-    def test_user_count_starts_from_specified_amount_when_creating_new_test_after_previous_step_has_been_stopped(self):
-        """Test for https://github.com/locustio/locust/issues/2135"""
-
-        class MyUser1(User):
-            wait_time = constant(0)
-
-            @task
-            def my_task(self):
-                pass
-
-        env = Environment(user_classes=[MyUser1], stop_timeout=0)
-        local_runner = env.create_local_runner()
-        web_ui = env.create_web_ui("127.0.0.1", 0)
-
-        gevent.sleep(0.1)
-
-        response = requests.post(
-            f"http://127.0.0.1:{web_ui.server.server_port}/swarm",
-            data={"user_count": 20, "spawn_rate": 20, "host": "https://localhost"},
-        )
-        self.assertEqual(200, response.status_code)
-
-        t0 = time.perf_counter()
-        while local_runner.user_count != 20:
-            self.assertTrue(time.perf_counter() - t0 <= 1, local_runner.user_count)
-            gevent.sleep(0.1)
-
-        response = requests.get(
-            f"http://127.0.0.1:{web_ui.server.server_port}/stop",
-        )
-        self.assertEqual(200, response.status_code)
-
-        t0 = time.perf_counter()
-        while local_runner.state != STATE_STOPPED:
-            self.assertTrue(time.perf_counter() - t0 <= 1, local_runner.state)
-            gevent.sleep(0.1)
-
-        t0 = time.perf_counter()
-        response = requests.post(
-            f"http://127.0.0.1:{web_ui.server.server_port}/swarm",
-            data={"user_count": 1, "spawn_rate": 1, "host": "https://localhost"},
-        )
-        self.assertEqual(200, response.status_code)
-        self.assertTrue(time.perf_counter() - t0 <= 1, "Stop endpoint should not be blocking")
-
-        # Make sure user count stays at 1 over 2s (2s is arbitrary, but we
-        # wait long enough to make sure it stays constant)
-        t0 = time.perf_counter()
-        while time.perf_counter() - t0 <= 2:
-            self.assertTrue(local_runner.user_count <= 1, local_runner.user_count)
-            gevent.sleep(0.1)
-
-        local_runner.stop()
-        web_ui.stop()
 
 
 class TestMasterWorkerRunners(LocustTestCase):
@@ -2274,7 +2219,7 @@ class TestMasterRunner(LocustRunnerTestCase):
                 )
             )
             sleep(0.2)
-            # heartbeat received from two workers so they are active, for fake_client3 HEARTBEAT_DEAD_INTERNAL has been breached, so it will be removed from worker list
+            # hearbeat received from two workers so they are active, for fake_client3 HEARTBEAT_DEAD_INTERNAL has been breached, so it will be removed from worker list
             self.assertEqual(0, len(master.clients.missing))
             self.assertEqual(2, master.worker_count)
             master.stop()
@@ -2978,34 +2923,6 @@ class TestMasterRunner(LocustRunnerTestCase):
             self.assertEqual("ack", server.outbox[0][1].type)
             self.assertEqual(1, len(server.outbox))
 
-    def test_worker_sends_bad_message_to_master(self):
-        """
-        Validate master sends reconnect message to worker when it receives a bad message.
-        """
-
-        class TestUser(User):
-            @task
-            def my_task(self):
-                pass
-
-        with mock.patch("locust.rpc.rpc.Server", mocked_rpc()) as server:
-            master = self.get_runner(user_classes=[TestUser])
-            server.mocked_send(Message("client_ready", __version__, "zeh_fake_client1"))
-            self.assertEqual(1, len(master.clients))
-            self.assertTrue(
-                "zeh_fake_client1" in master.clients, "Could not find fake client in master instance's clients dict"
-            )
-
-            master.start(10, 10)
-            sleep(0.1)
-            server.mocked_send(Message("stats", BAD_MESSAGE, "zeh_fake_client1"))
-            self.assertEqual(4, len(server.outbox))
-
-            # Expected message order in outbox: ack, spawn, reconnect, ack
-            self.assertEqual(
-                "reconnect", server.outbox[2][1].type, "Master didn't send worker reconnect message when expected."
-            )
-
 
 class TestWorkerRunner(LocustTestCase):
     def setUp(self):
@@ -3283,54 +3200,6 @@ class TestWorkerRunner(LocustTestCase):
             self.assertIn("current_memory_usage", message.data)
 
             worker.quit()
-
-    def test_reset_rpc_connection_to_master(self):
-        """
-        Validate worker resets RPC connection to master on "reconnect" message.
-        """
-
-        class MyUser(User):
-            wait_time = constant(1)
-
-            @task
-            def my_task(self):
-                pass
-
-        with mock.patch("locust.rpc.rpc.Client", mocked_rpc(raise_on_close=False)) as client:
-            client_id = id(client)
-            worker = self.get_runner(environment=Environment(), user_classes=[MyUser], client=client)
-            client.mocked_send(
-                Message(
-                    "spawn",
-                    {
-                        "timestamp": 1605538584,
-                        "user_classes_count": {"MyUser": 10},
-                        "host": "",
-                        "stop_timeout": None,
-                        "parsed_options": {},
-                    },
-                    "dummy_client_id",
-                )
-            )
-            sleep(0.6)
-            self.assertEqual(STATE_RUNNING, worker.state)
-            with self.assertLogs("locust.runners") as capture:
-                with mock.patch("locust.rpc.rpc.Client.close") as close:
-                    client.mocked_send(
-                        Message(
-                            "reconnect",
-                            None,
-                            "dummy_client_id",
-                        )
-                    )
-                    sleep(0)
-                    worker.spawning_greenlet.join()
-                    worker.quit()
-                    close.assert_called_once()
-            self.assertIn(
-                "WARNING:locust.runners:Received reconnect message from master. Resetting RPC connection.",
-                capture.output,
-            )
 
     def test_change_user_count_during_spawning(self):
         class MyUser(User):
@@ -3961,6 +3830,12 @@ class TestStopTimeout(LocustTestCase):
         self.assertEqual(2, test_stop_run[0])
 
     def test_stop_timeout_with_ramp_down(self):
+        """
+        The spawn rate does not have an effect on the rate at which the users are stopped.
+        It is expected that the excess users will be stopped as soon as possible in parallel
+        (while respecting the stop_timeout).
+        """
+
         class MyTaskSet(TaskSet):
             @task
             def my_task(self):
