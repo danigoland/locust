@@ -4,21 +4,6 @@ Changelog Highlights
 
 For full details of the Locust changelog, please see https://github.com/locustio/locust/blob/master/CHANGELOG.md
 
-2.10.2
-======
-* Fix for Flask 2.2.0 breaking changes https://github.com/locustio/locust/pull/2148
-
-2.10.1
-======
-* Increase CONNECT_RETRY_COUNT to avoid workers giving up too soon if master is not up yet by https://github.com/locustio/locust/pull/2125
-
-2.10.0
-======
-* Add ack for worker connection https://github.com/locustio/locust/pull/2077 (note that 2.10 workers will not work with a 2.9 master)
-* add support for custom SSLContext when using FastHttpUser https://github.com/locustio/locust/pull/2113
-* More robust handling of ZMQ/RPC errors https://github.com/locustio/locust/pull/2120 / https://github.com/locustio/locust/pull/2096
-* Full Changelog https://github.com/locustio/locust/compare/2.9.0...2.10.0
-
 2.9.0
 =====
 

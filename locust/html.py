@@ -80,8 +80,6 @@ def get_html_report(environment, show_download_link=True):
         "report.html",
         int=int,
         round=round,
-        escape=escape,
-        str=str,
         requests_statistics=requests_statistics,
         failures_statistics=failures_statistics,
         exceptions_statistics=exceptions_statistics,
@@ -93,7 +91,7 @@ def get_html_report(environment, show_download_link=True):
         static_css="\n".join(static_css),
         show_download_link=show_download_link,
         locustfile=environment.locustfile,
-        tasks=dumps(task_data),
+        tasks=escape(dumps(task_data)),
     )
 
     return res

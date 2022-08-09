@@ -79,10 +79,13 @@ def create_tls_cert(hostname):
 
 
 def clear_all_functools_lru_cache() -> None:
-    # Clear all `functools.lru_cache` to ensure that no state are persisted from one test to another.
-    # Taken from https://stackoverflow.com/a/50699209.
-    gc.collect()
-    wrappers = [a for a in gc.get_objects() if isinstance(a, functools._lru_cache_wrapper)]
-    assert len(wrappers) > 0
-    for wrapper in wrappers:
-        wrapper.cache_clear()
+    # Somehow, the code below throws unrelated DeprecationWarning related to Flask.
+    # We mute the warnings in order to not pollute the logs when running the tests.
+    with warnings.catch_warnings(record=True):
+        # Clear all `functools.lru_cache` to ensure that no state are persisted from one test to another.
+        # Taken from https://stackoverflow.com/a/50699209.
+        gc.collect()
+        wrappers = [a for a in gc.get_objects() if isinstance(a, functools._lru_cache_wrapper)]
+        assert len(wrappers) > 0
+        for wrapper in wrappers:
+            wrapper.cache_clear()
